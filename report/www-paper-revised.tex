@@ -203,7 +203,7 @@ This is an experience report. We make no claim that the individual mechanisms de
 
 \noindent\textbf{What this paper does not claim.} It does not claim a novel constraint-satisfaction algorithm; the validator is a linear scan over a small member list. It does not claim generality beyond its single deployment. It does not claim measured superiority over the alternative approaches discussed in Section~\ref{sec:evaluation}, and we have removed the scored comparison that appeared in an earlier version because we had no methodology capable of supporting it.
 
-The remainder of this paper is organized as follows. Section~\ref{sec:related} surveys related work across seven research areas. Section~\ref{sec:model} presents the system model and design principles. Section~\ref{sec:constraints} formalizes the constraint model with feasibility and correctness proofs. Section~\ref{sec:architecture} describes the system architecture, including the round-robin API key rotation. Section~\ref{sec:integrity} details the six-layer data integrity framework. Section~\ref{sec:security} presents the security architecture. Section~\ref{sec:evaluation} reports the production evaluation results. Section~\ref{sec:discussion} discusses findings and limitations. Section~\ref{sec:future} outlines future work. Section~\ref{sec:conclusion} concludes.
+The remainder of this paper is organized as follows. Section~\ref{sec:related} surveys related work across 8 research areas. Section~\ref{sec:model} presents the system model and design principles. Section~\ref{sec:constraints} formalizes the constraint model with feasibility and correctness proofs. Section~\ref{sec:architecture} describes the system architecture, including the round-robin API key rotation. Section~\ref{sec:integrity} details the six-layer data integrity framework. Section~\ref{sec:security} presents the security architecture. Section~\ref{sec:evaluation} reports the production evaluation results. Section~\ref{sec:discussion} discusses findings and limitations. Section~\ref{sec:future} outlines future work. Section~\ref{sec:conclusion} concludes.
 
 % ============================================================
 \section{Related Work}
@@ -258,9 +258,9 @@ Our architecture operates within the constraints of current serverless platforms
 
 Rate limiting is a foundational mechanism for protecting web services from abuse and ensuring fair resource allocation. The token bucket and leaky bucket algorithms~\cite{tanenbaum2011} are widely deployed in API gateways and reverse proxies. The IETF has proposed standardized rate-limit response headers~\cite{ietf-ratelimit2024} to communicate quota status to clients.
 
-Raghavan et al.~\cite{raghavan2007} address distributed rate limiting in cloud environments, proposing algorithms that maintain global rate limits across geographically distributed enforcement points. Their work focuses on \emph{incoming} request rate limiting (protecting the server), whereas our round-robin algorithm addresses \emph{outgoing} request rate limiting (operating within external API quotas), a complementary but distinct problem.
+Raghavan et al.~\cite{raghavan2007} address distributed rate limiting in cloud environments, proposing algorithms that maintain global rate limits across geographically distributed enforcement points. Their work focuses on \emph{incoming} request rate limiting (protecting the server), whereas the constraint we faced was on \emph{outgoing} requests, that is operating inside an external provider's quota, which is a distinct problem and, as Section~\ref{subsec:roundrobin} argues, largely a commercial rather than an algorithmic one.
 
-The specific challenge of multiplying effective API capacity through multi-key rotation has received little formal treatment in the literature. Commercial platforms (SendGrid, Brevo, Mailgun) document per-key quotas but do not provide client-side rotation algorithms. Our round-robin approach (Section~\ref{subsec:roundrobin}) formalizes this pattern with complexity analysis and fault-tolerance properties.
+Commercial transactional email platforms document per-account quotas and offer higher allowances through paid plans~\cite{brevo-limits}. We are not aware of formal treatment of client-side rotation across multiple accounts to enlarge an aggregate free allowance, and we now think the absence of such treatment reflects the nature of the practice rather than a gap in the literature. Section~\ref{subsec:roundrobin} describes what we built, explains why we withdraw it, and sets out the legitimate ways to obtain more capacity.
 
 \subsection{Self-Service Platforms and Workflow Management}
 
@@ -644,7 +644,7 @@ The architecture is technology-agnostic in principle; our reference implementati
 
 \textbf{Application Layer.} The App Router handles 11 REST API endpoints (Table~\ref{tab:endpoints}), each implementing input validation, authentication verification, business logic, and response formatting. Edge middleware intercepts all API requests for origin verification, security header injection, and route protection. The rate limiter operates at the IP level with configurable sliding windows.
 
-\textbf{Data Layer.} The NoSQL document store provides real-time subscriptions. The authentication service provides custom token infrastructure for client-side database access. External services include the transactional email API (with multi-key round-robin) and the edge CDN for static asset delivery.
+\textbf{Data Layer.} The NoSQL document store provides real-time subscriptions. The authentication service provides custom token infrastructure for client-side database access. External services include the transactional email API and the edge CDN for static asset delivery.
 
 \subsection{API Design}
 
@@ -788,7 +788,7 @@ What we did was to configure the deployment with the credentials of three separa
 
 The algorithm has several important properties:
 
-\textbf{Load distribution.} The round-robin counter ensures that successive requests use different API keys, distributing load evenly across all $n$ keys. Over $m$ requests, each key receives approximately $m/n$ requests, achieving near-optimal load balancing.
+\textbf{Intended load distribution.} Within the lifetime of a single process the counter causes successive requests to use different credentials, so that over $m$ requests served by one instance each credential receives about $m/n$. This is the design intent rather than an observed property, and the qualifier matters: as noted below, instance recycling resets the counter, and we did not record the distribution actually achieved.
 
 \textbf{Automatic failover.} If a key returns an error (HTTP 429 rate-limited, 401 unauthorized, or 500 server error), the algorithm advances to the next key without manual intervention. In the worst case, all $n$ keys are attempted before failure.
 
